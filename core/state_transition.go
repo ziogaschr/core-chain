@@ -428,6 +428,9 @@ func (st *StateTransition) TransitionDb() (*ExecutionResult, error) {
 		return nil, fmt.Errorf("%w: code size %v limit %v", ErrMaxInitCodeSizeExceeded, len(msg.Data), params.MaxInitCodeSize)
 	}
 
+	// Get a snapshot of the state before anything happens
+	snapshot := st.state.Snapshot()
+
 	// Execute the preparatory steps for state transition which includes:
 	// - prepare accessList(post-berlin)
 	// - reset transient storage(eip 1153)
@@ -464,8 +467,10 @@ func (st *StateTransition) TransitionDb() (*ExecutionResult, error) {
 		// Check if is a contract call
 		isContractCall := contractCreation || (msg.To != nil && st.state.GetCodeSize(*st.msg.To) > 0)
 		if vmerr == nil && isContractCall {
-			// Get a snapshot of the state before the distribution
-			snapshot := st.state.Snapshot()
+			// Before the TheseusFix hard-fork we need to take the snapshot here
+			if !st.evm.ChainConfig().IsTheseusFix(st.evm.Context.BlockNumber, st.evm.Context.Time) {
+				snapshot = st.state.Snapshot()
+			}
 
 			// Get tx logs. Only tx hash is used to get logs, the blockNumber and blockHash
 			// are only being filled in the logs, we can ignore them in this specific use case.

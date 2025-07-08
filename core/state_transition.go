@@ -491,6 +491,12 @@ func (st *StateTransition) TransitionDb() (*ExecutionResult, error) {
 						continue
 					}
 
+					// We only care about events with topics
+					// as the fee market events are indexed by the event signature
+					if len(eventLog.Topics) == 0 {
+						continue
+					}
+
 					// Check if is a precompile
 					if isPrecompile := slices.Contains(vm.ActivePrecompiles(rules), eventLog.Address); isPrecompile {
 						continue

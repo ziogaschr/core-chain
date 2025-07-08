@@ -30,6 +30,7 @@ import (
 	"github.com/ethereum/go-ethereum/core/vm"
 	"github.com/ethereum/go-ethereum/crypto/kzg4844"
 	"github.com/ethereum/go-ethereum/eth/feemarket"
+	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/holiman/uint256"
 )
@@ -428,9 +429,6 @@ func (st *StateTransition) TransitionDb() (*ExecutionResult, error) {
 		return nil, fmt.Errorf("%w: code size %v limit %v", ErrMaxInitCodeSizeExceeded, len(msg.Data), params.MaxInitCodeSize)
 	}
 
-	// Get a snapshot of the state before anything happens
-	snapshot := st.state.Snapshot()
-
 	// Execute the preparatory steps for state transition which includes:
 	// - prepare accessList(post-berlin)
 	// - reset transient storage(eip 1153)
@@ -467,6 +465,8 @@ func (st *StateTransition) TransitionDb() (*ExecutionResult, error) {
 		// Check if is a contract call
 		isContractCall := contractCreation || (msg.To != nil && st.state.GetCodeSize(*st.msg.To) > 0)
 		if vmerr == nil && isContractCall {
+			var snapshot int
+
 			// Before the TheseusFix hard-fork we need to take the snapshot here
 			if !st.evm.ChainConfig().IsTheseusFix(st.evm.Context.BlockNumber, st.evm.Context.Time) {
 				snapshot = st.state.Snapshot()
@@ -577,8 +577,15 @@ func (st *StateTransition) TransitionDb() (*ExecutionResult, error) {
 					// This way the user will be refunded the fee market rewards
 					st.gasRemaining += distributedGas
 
-					// Revert the state to the pre-distribution state
-					st.state.RevertToSnapshot(snapshot)
+					// Pre-TheseusFix: Revert the state to the pre-distribution state.
+					// Post-TheseusFix: Revert the state to the EVM snapshot, which maintains the nonce increment.
+					if !st.evm.ChainConfig().IsTheseusFix(st.evm.Context.BlockNumber, st.evm.Context.Time) {
+						log.Debug("Feemarket reverting state to pre-distribution", "snapshot", snapshot)
+						st.state.RevertToSnapshot(snapshot)
+					} else if evmSnapshot := st.evm.InitialSnapshot(); evmSnapshot >= 0 {
+						log.Debug("Feemarket reverting state to EVM snapshot", "snapshot", evmSnapshot)
+						st.state.RevertToSnapshot(evmSnapshot)
+					}
 
 					// Reset the distributed amounts
 					distributedAmount.SetUint64(0)

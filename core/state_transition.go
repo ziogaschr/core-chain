@@ -30,6 +30,7 @@ import (
 	"github.com/ethereum/go-ethereum/core/vm"
 	"github.com/ethereum/go-ethereum/crypto/kzg4844"
 	"github.com/ethereum/go-ethereum/eth/feemarket"
+	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/holiman/uint256"
 )
@@ -431,6 +432,9 @@ func (st *StateTransition) TransitionDb() (*ExecutionResult, error) {
 	// Get a snapshot of the state before anything happens
 	snapshot := st.state.Snapshot()
 
+	// Keep track of the pre-execution nonce
+	preExecutionNonce := st.state.GetNonce(sender.Address())
+
 	// Execute the preparatory steps for state transition which includes:
 	// - prepare accessList(post-berlin)
 	// - reset transient storage(eip 1153)
@@ -579,6 +583,20 @@ func (st *StateTransition) TransitionDb() (*ExecutionResult, error) {
 
 					// Revert the state to the pre-distribution state
 					st.state.RevertToSnapshot(snapshot)
+
+					// For ErrFeeMarketOutOfGas, we need to handle nonce carefully.
+					// Nonce has to be incremented even for failed transactions.
+					// Pre-TheseusFix: The snapshot was taken after nonce increment, so reverting doesn't affect it.
+					// Post-TheseusFix: The snapshot was taken before nonce increment, so reverting removes it.
+					if vmerr == ErrFeeMarketOutOfGas {
+						if st.evm.ChainConfig().IsTheseusFix(st.evm.Context.BlockNumber, st.evm.Context.Time) {
+							stNonce := st.state.GetNonce(msg.From)
+							if preExecutionNonce == stNonce {
+								st.state.SetNonce(msg.From, stNonce+1, tracing.NonceChangeEoACall)
+								log.Debug("Increment nonce on ErrFeeMarketOutOfGas (post-TheseusFix)", "address", msg.From, "newNonce", stNonce+1)
+							}
+						}
+					}
 
 					// Reset the distributed amounts
 					distributedAmount.SetUint64(0)

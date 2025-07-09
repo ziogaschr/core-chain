@@ -133,7 +133,7 @@ func NewEVM(blockCtx BlockContext, statedb StateDB, chainConfig *params.ChainCon
 	}
 	evm.precompiles = activePrecompiledContracts(evm.chainRules)
 	evm.interpreter = NewEVMInterpreter(evm)
-	evm.initialSnapshot = -1 // -1 means no outer snapshot is set
+	evm.initialSnapshot = -1 // -1 means no initial snapshot is set
 
 	return evm
 }
@@ -154,7 +154,7 @@ func (evm *EVM) SetPrecompiles(precompiles PrecompiledContracts) {
 // This is not threadsafe and should only be done very cautiously.
 func (evm *EVM) SetTxContext(txCtx TxContext) {
 	evm.TxContext = txCtx
-	evm.initialSnapshot = -1 // reset snapshot for the new transaction context
+	evm.initialSnapshot = -1 // reset initial snapshot for the new transaction context
 }
 
 // Cancel cancels any running EVM operation. This may be called concurrently and

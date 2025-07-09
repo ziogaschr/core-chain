@@ -465,9 +465,10 @@ func (st *StateTransition) TransitionDb() (*ExecutionResult, error) {
 		// Check if is a contract call
 		isContractCall := contractCreation || (msg.To != nil && st.state.GetCodeSize(*st.msg.To) > 0)
 		if vmerr == nil && isContractCall {
-			var snapshot int
+			// Post-TheseusFix: Get the pre EVM snapshot, which maintains the nonce increment.
+			snapshot := st.evm.InitialSnapshot()
 
-			// Before the TheseusFix hard-fork we need to take the snapshot here
+			// Pre-TheseusFix: Get a snapshot to the pre-distribution state.
 			if !st.evm.ChainConfig().IsTheseusFix(st.evm.Context.BlockNumber, st.evm.Context.Time) {
 				snapshot = st.state.Snapshot()
 			}
@@ -575,14 +576,11 @@ func (st *StateTransition) TransitionDb() (*ExecutionResult, error) {
 					// This way the user will be refunded the fee market rewards
 					st.gasRemaining += distributedGas
 
-					// Pre-TheseusFix: Revert the state to the pre-distribution state.
-					// Post-TheseusFix: Revert the state to the EVM snapshot, which maintains the nonce increment.
-					if !st.evm.ChainConfig().IsTheseusFix(st.evm.Context.BlockNumber, st.evm.Context.Time) {
-						log.Debug("Feemarket reverting state to pre-distribution", "snapshot", snapshot)
+					if snapshot >= 0 {
+						log.Debug("Feemarket reverting state to EVM snapshot", "txHash", st.evm.StateDB.TxHash(), "snapshot", snapshot)
 						st.state.RevertToSnapshot(snapshot)
-					} else if evmSnapshot := st.evm.InitialSnapshot(); evmSnapshot >= 0 {
-						log.Debug("Feemarket reverting state to EVM snapshot", "snapshot", evmSnapshot)
-						st.state.RevertToSnapshot(evmSnapshot)
+					} else {
+						log.Debug("Feemarket snapshot will not be reverted", "txHash", st.evm.StateDB.TxHash(), "snapshot", snapshot)
 					}
 
 					// Reset the distributed amounts

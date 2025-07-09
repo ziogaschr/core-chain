@@ -154,7 +154,6 @@ func (evm *EVM) SetPrecompiles(precompiles PrecompiledContracts) {
 // This is not threadsafe and should only be done very cautiously.
 func (evm *EVM) SetTxContext(txCtx TxContext) {
 	evm.TxContext = txCtx
-	evm.initialSnapshot = -1 // reset initial snapshot for the new transaction context
 }
 
 // Cancel cancels any running EVM operation. This may be called concurrently and
@@ -194,7 +193,7 @@ func (evm *EVM) Call(caller ContractRef, addr common.Address, input []byte, gas 
 		return nil, gas, ErrInsufficientBalance
 	}
 	snapshot := evm.StateDB.Snapshot()
-	if evm.initialSnapshot == -1 {
+	if evm.depth == 0 {
 		evm.initialSnapshot = snapshot
 	}
 	p, isPrecompile := evm.precompile(addr)
@@ -272,7 +271,7 @@ func (evm *EVM) CallCode(caller ContractRef, addr common.Address, input []byte, 
 		return nil, gas, ErrInsufficientBalance
 	}
 	var snapshot = evm.StateDB.Snapshot()
-	if evm.initialSnapshot == -1 {
+	if evm.depth == 0 {
 		evm.initialSnapshot = snapshot
 	}
 
@@ -323,7 +322,7 @@ func (evm *EVM) DelegateCall(caller ContractRef, addr common.Address, input []by
 		return nil, gas, ErrDepth
 	}
 	var snapshot = evm.StateDB.Snapshot()
-	if evm.initialSnapshot == -1 {
+	if evm.depth == 0 {
 		evm.initialSnapshot = snapshot
 	}
 
@@ -372,7 +371,7 @@ func (evm *EVM) StaticCall(caller ContractRef, addr common.Address, input []byte
 	// then certain tests start failing; stRevertTest/RevertPrecompiledTouchExactOOG.json.
 	// We could change this, but for now it's left for legacy reasons
 	var snapshot = evm.StateDB.Snapshot()
-	if evm.initialSnapshot == -1 {
+	if evm.depth == 0 {
 		evm.initialSnapshot = snapshot
 	}
 
@@ -468,7 +467,7 @@ func (evm *EVM) create(caller ContractRef, codeAndHash *codeAndHash, gas uint64,
 	// It might be possible the contract code is deployed to a pre-existent
 	// account with non-zero balance.
 	snapshot := evm.StateDB.Snapshot()
-	if evm.initialSnapshot == -1 {
+	if evm.depth == 0 {
 		evm.initialSnapshot = snapshot
 	}
 	if !evm.StateDB.Exist(address) {
